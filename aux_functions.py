@@ -2,7 +2,8 @@ import numpy as np
 import time
 import os
 
-from numpy.core.numeric import allclose
+#from numpy.core.numeric import allclose
+
 def reset_array_prov(array):
     for i in range(array.shape[0]):
         for j in range(array.shape[1]):
