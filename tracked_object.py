@@ -1,3 +1,8 @@
+"""
+tracked_object.py defines TrackedObj -> a datatype which tracks on object methods
+"""
+
+
 
 import numpy as np
 import operator
@@ -20,7 +25,7 @@ def add_provenance_copy(orig_func):
                 provenance += arg.provenance
                 args2.append(arg.value)
             else:
-                args2.append(arg.value)
+                args2.append(arg)
         if len(args2) != 0:
             value = orig_func(ref,*args2)
         else:
@@ -74,7 +79,9 @@ class TrackedObj(object):
     
     
     def set_provenance(self, id):
-        self.id = id
+        if id != None:
+            self.id = id
+        
         if id == None:
             self.provenance = []
         elif isinstance(id, list):
@@ -244,10 +251,10 @@ class TrackedObj(object):
 
         
     def __str__(self):
-        return str(self.value)
+        return str((self.value, self.provenance))
     
     def __repr__(self):
-        return str(self.value)
+        return str((self.value, self.provenance))
 
 # why get and set? -> set might make sense
 
@@ -259,7 +266,7 @@ class TrackedObj(object):
 # print(arr.sum().provenance)
 # save_array_prov(arr, './logs')
 
-x = TrackedObj(10.10, 1)
-import math
+# x = TrackedObj(10.10, 1)
+# import math
 
-print(math.trunc(x))
+# print(math.trunc(x))
