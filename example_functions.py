@@ -20,7 +20,7 @@ def test2(arr, arr2):
 
 def test3(arr):
     # tests filters
-    out = arr[arr < 0.5]
+    out = arr < 0.5
     return out
 
 def test4(arr):

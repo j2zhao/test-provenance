@@ -79,5 +79,5 @@ def meta_test(funct, inputs = [(100, 100)]):
 
 
 if __name__ == '__main__':
-    meta_test_prov(test5)
-    meta_test(test5)
+    meta_test_prov(test3)
+    meta_test(test3)
