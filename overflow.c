@@ -1,3 +1,6 @@
+/*
+Eventually include better caching at this point.
+*/
 #include <Python.h>
 #include <structmember.h>
 #include "common.h"
