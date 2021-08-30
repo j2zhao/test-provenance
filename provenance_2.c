@@ -105,61 +105,52 @@ make_tfloat_prov1(npy_float64 n, tracked_float a) {
     long size = a.size;
     size_t p_size = size(provenance);
     tracked_float r;
-    if (size - 1) > 0 {
+    if (size - 1) > 0:
         provenance overflow[size - 1];
+        memcpy(overflow, a.overflow, p_size*(size - 1))
         provenance p;
-        memcpy(overflow, a.overflow, p_size*(size - 1));
-        memcpy(p, a.p, p_size);
-        r = {n, p, size, overflow};
-        return r;
-    }
-    else {
+        memcpy(p, a.p, p_size)
+        r = {n, p, size, overflow}
+        return r
+    else:
         provenance p;
         memcpy(p, a.p, p_size);
         r = {n, p, size, NULL};
-        return r;
-    }
+        return r
 }
 
 static NPY_INLINE tracked_float
 make_tfloat_prov2(np_float64 n, tracked_float a, tracked_float b) {
     long size0 = a.size
     long size1 = b.size
+    
     long size = size0 + size1
     /* we have history */
-    if (size >= 1) {
+    if size >= 1:
         provenance p;
         provenance overflow[size - 1];
         int offset = -1;
         size_t p_size = sizeof(provenance);
-        tracked_float r;
         /*a has history*/
-        if (size0 > 0) {
-            memcpy(p, a.p, p_size);
+        if size0 > 0:
+            memcpy(p, a.p, p_size)
             x = true;
-            if (size0 > 1) {
-                memcpy(overflow, a.overflow, (size0 - 1)*p_sizes);
-            }
+            if size0 > 1:
+                memcpy(overflow, a.overflow, (size0 - 1)*p_sizes)
             offset = size0 - 1;
-        }
-        if (size1 > 0) {
-            if (offset == -1) {
-                memcpy(p, b.p, p_size);
-                memcpy(overflow, b.overflow, (size1 - 1)*p_size);
-            }
-            else {
-                memcpy(overflow + offset, b.p, p_size);
-                memcpy(overflow + offset + 1, b.p, p_size*(size1 - 1));
-            }
-        }
-        r = {n, p, size, overflow};
-        return r;
-    }
-    else {
-        provenance p = {-1, -1, -1, -1, -1, -1};
-        tracked_float r = {n, p , 0, NULL};
-        return r;
-    }
+        
+        if size1 > 0:
+            if offset == -1:
+                memcpy(p, b.p, p_size)
+                memcpy(overflow, b.overflow, (size1 - 1)*p_size)
+            else:
+                memcpy(overflow + offset, b.p, p_size)
+                memcpy(overflow + offset + 1, b.p, p_size*(size1 - 1))
+        tracked_float r = {n, p, size, overflow}
+        return r
+    else:
+        tracked_float r = {n, NULL, 0, NULL}
+        return r
         
 }
 
@@ -195,25 +186,24 @@ PyTFloat_FromTFloat(tracked_float x) {
  */
 #define AS_DOUBLE(dst,object) \
     { \
-        if (PyTFloat_Check(object)) { \
-            dst = ((PyTFloat*)object)->f.n; \
+        if (PyRational_Check(object)) { \
+            dst = ((PyRational*)object)->f.n; \
         } \
         else if (PyFloat_Check(object)){ \
             dst = PyFloat_AsDouble(object); \
         }  else if (PyLong_Check(object)) { \
-            dst = PyLong_AsDouble(object); \
+            dst = PyLong_AsLong(object); \
         } else { \
             Py_INCREF(Py_NotImplemented); \
             return Py_NotImplemented; \
         } \
-        return 0; \
     } \
 
 // no error checking
 // only make one type for now
 //initialize with only one provenance
 static PyObject*
-pytfloat_new(PyTypeObject* type, PyObject* args, PyObject* kwds) {
+pyrational_new(PyTypeObject* type, PyObject* args, PyObject* kwds) {
     npy_float64 n = PyTuple_GET_ITEM(args, 0);
     long id = PyTuple_GET_ITEM(args, 1);
     long start_0 = PyTuple_GET_ITEM(args, 2);
@@ -249,17 +239,15 @@ pytfloat_richcompare(PyObject* a, PyObject* b, int op) {
 static char*
 provenance_repr(provenance p, provenance* overflow) {
     size_t rsize;
-    if (overflow != NULL) {
+    if overflow != NULL:
         rsize = sizeof(overflow)/sizeof(provenance) + 1;
-    }
-    else {
+    else
         rsize = 1;
-    }
     char* output[rsize*50];
     int offset = 0;
     provenance q = p;
-    int x;
-    for (x = 0, x < rsize, x ++) {
+
+    for (int x = 0, x < rsize, x ++) {
         offset += sprint(output + offset, "[(%d,%d,%d,%d,%d,%d)]", 
             q.id, q.start_0, q.start_1, q.start_2,x.end_0, q.end_1, q.type);
         if (x > 0 && x < rsize -1 ) {
@@ -275,27 +263,27 @@ provenance_repr(provenance p, provenance* overflow) {
 }
 
 static PyObject*
-pytfloat_repr(PyObject* self) {
-    tracked_float x = ((PyTFloat*)self)->f;
+pyrational_repr(PyObject* self) {
+    tracked_float x = ((PyRational*)self)->f;
     const char* c = provenance_repr(x.p, x.overflow);
     return PyUnicode_FromFormat("%d ; %V", x.n, c);
 }
 
 static PyObject*
-pytfloat_str(PyObject* self) {
-    return pytfloat_rep(self);
+pyrational_str(PyObject* self) {
+    return pyrational_rep(self);
 }
 
 static npy_hash_t
-pytfloat_hash(PyObject* self) {
-    tracked x = ((PyTFloat*)self)->f;
+pyrational_hash(PyObject* self) {
+    tracked x = ((PyRational*)self)->f;
     /* Use a extremely weak hash as Python expects ?*/
     long h = 131071*x.n+524287*x.size;
     /* Never return the special error value -1 */
     return h==-1?2:h;
 }
 
-#define TFLOAT_BINOP_2(name, exp) \
+#define RATIONAL_BINOP_2(name, exp) \
     static PyObject* \
     pytfloat_##name(PyObject* a, PyObject* b) { \
         tracked_float z;\
@@ -318,17 +306,17 @@ pytfloat_hash(PyObject* self) {
         } \
         return PyTFloat_FromTFloat(z); \
     }
-#define TFLOAT_BINOP(name, exp) TFLOAT_BINOP_2(name, x exp y))
+#define RATIONAL_BINOP(name, exp) RATIONAL_BINOP_2(name, x exp y))
 
-TFLOAT_BINOP(add, +)
-TFLOAT_BINOP(subtract, -)
-TFLOAT_BINOP(multiply, *)
-TFLOAT_BINOP(divide, /)
-TFLOAT_BINOP_2(floor_divide, (int)floor(x / y) )
+RATIONAL_BINOP(add, +)
+RATIONAL_BINOP(subtract, -)
+RATIONAL_BINOP(multiply, *)
+RATIONAL_BINOP(divide, /)
+RATIONAL_BINOP_2(floor_divide, (int)floor(x / y) )
 
-#define TFLOAT_UNOP(name, exp) \
+#define RATIONAL_UNOP(name, exp) \
     static PyObject* \
-    pytfloat_##name(PyObject* self) { \
+    pyrational_##name(PyObject* self) { \
         tracked_float x = ((PyTFloat*)self)->f; \
         npy_float64 y = x.n; \
         npy_float64 z = exp; \
@@ -339,9 +327,9 @@ TFLOAT_BINOP_2(floor_divide, (int)floor(x / y) )
         return PyTFloat_FromTFloat(tf); \
     }
 
-#define TFLOAT_UNOP_2(name, type, exp, convert) \
+#define RATIONAL_UNOP_2(name, type, exp, convert) \
     static PyObject* \
-    pytfloat_##name(PyObject* self) { \
+    pyrational_##name(PyObject* self) { \
         tracked_float x = ((PyTFloat*)self)->f; \
         npy_float64 y = x.n; \
         type z = exp; \
@@ -351,11 +339,11 @@ TFLOAT_BINOP_2(floor_divide, (int)floor(x / y) )
         return convert(z); \
     }
 
-TFLOAT_UNOP(negative, -x)
-TFLOAT_UNOP(absolute,fabs(x))
+RATIONAL_UNOP(negative, -x)
+RATIONAL_UNOP(absolute,fabs(x))
 
-TFLOAT_UNOP_2(int, long, (long)y, PyLong_FromLong)
-TFLOAT_UNOP_2(float,double, (double)y,PyFloat_FromDouble)
+RATIONAL_UNOP_2(int, long, (long)y, PyLong_FromLong)
+RATIONAL_UNOP_2(float,double, (double)y,PyFloat_FromDouble)
 
 static PyObject*
 pytfloat_positive(PyObject* self) {
@@ -366,10 +354,10 @@ pytfloat_positive(PyObject* self) {
 static int
 pytfloat_nonzero(PyObject* self) {
     tfloat x = ((PyTFloat*)self)->f;
-    return tfloat_nonzero(x);
+    return rational_nonzero(x);
 }
 
-static PyNumberMethods pytfloat_as_number = {
+static PyNumberMethods pyrational_as_number = {
     pytfloat_add,          /* nb_add */
     pytfloat_subtract,     /* nb_subtract */
     pytfloat_multiply,     /* nb_multiply */
@@ -388,7 +376,7 @@ static PyNumberMethods pytfloat_as_number = {
     0,                       /* nb_or */
     pytfloat_int,          /* nb_int */
     0,                       /* reserved */
-    pytfloat_float,        /* nb_float */
+    pyrational_float,        /* nb_float */
 
     0,                       /* nb_inplace_add */
     0,                       /* nb_inplace_subtract */
@@ -401,8 +389,8 @@ static PyNumberMethods pytfloat_as_number = {
     0,                       /* nb_inplace_xor */
     0,                       /* nb_inplace_or */
 
-    pytfloat_floor_divide, /* nb_floor_divide */
-    pytfloat_divide,       /* nb_true_divide */
+    pyrational_floor_divide, /* nb_floor_divide */
+    pyrational_divide,       /* nb_true_divide */
     0,                       /* nb_inplace_floor_divide */
     0,                       /* nb_inplace_true_divide */
     0,                       /* nb_index */
@@ -418,14 +406,13 @@ pytfloat_psize_get(PyObject* self) {
     return PyLong_FromLong(((PyTFloat*)self)->f.size);
 }
 
-static int
+static PyObject*
 pytfloat_float_set(PyObject* self, PyObject* value, void* closure) {
     npy_float64 x = PyFloat_AsDouble(((PyFloat*)value);
     if (PyErr_Occurred()) {
-        return 0;
+        return -1;
     }
     ((PyTFloat*)self)->f.n = x;
-    return 1;
 }
 
 
@@ -433,23 +420,21 @@ static PyObject*
 pytfloat_provenance_get(PyObject* self, void* closure) {
     tracked_float f = ((PyTFloat*)self)->f;
     long size = f.size;
-    int i;
-    provenance p = f.p;
-
     PyListObject plist = PyList_New(PyLong_AsSsize_t(PyLong_FromLong(size)));
+
+    provenance p = f.p;
     PyTupleObject prov = PyTuple_Pack(6, PyLong_FromLong(p.id), PyLong_FromLong(p.start_0), 
         PyLong_FromLong(p.start_1), PyLong_FromLong(p.end_0), PyLong_FromLong(p.end_1), 
         PyLong_FromLong(p.type));
     PyList_SetItem(plist, 0, prov);
 
-    for (i = 1; i < size, i++) {
-        provenance p = f.overflow[i];
+    for (int i = 1; i < size, i++) {
+        provenance p = f.p;
         PyTupleObject prov = PyTuple_Pack(6, PyLong_FromLong(p.id), PyLong_FromLong(p.start_0), 
             PyLong_FromLong(p.start_1), PyLong_FromLong(p.end_0), PyLong_FromLong(p.end_1), 
             PyLong_FromLong(p.type));
         PyList_SetItem(plist, 0, prov);
     }
-    return plist;
 }
 
 static PyGetSetDef pytfloat_getset[] = {
@@ -459,44 +444,37 @@ static PyGetSetDef pytfloat_getset[] = {
     {0} /* sentinel */
 };
 
-static void pytfloat_dealloc(PyObject* self){
-    if ((PyTFloat*)self->f.overflow != NULL) {
-        free(((PyTFloat*)self)->f.overflow);
-    }
-    Py_TYPE(obj)->tp_free(obj);
-}
-
-static PyTypeObject PyTFloat_Type = {
+static PyTypeObject PyRational_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "numpy.core.provenance.tfloat",  /* tp_name */
     sizeof(PyTFloat),                       /* tp_basicsize */
-    0,                                        /* tp_itemsize -> am not sure if array counts as dynamic?? maybe not, but it might be more than a new object -> then again, we don't really see it*/
-    pytfloat_dealloc,                         /* tp_dealloc */
+    0,                                        /* tp_itemsize */
+    0,                                        /* tp_dealloc */
     0,                                        /* tp_print */
     0,                                        /* tp_getattr */
     0,                                        /* tp_setattr */
     0,                                        /* tp_reserved */
-    pytfloat_repr,                          /* tp_repr */
-    &pytfloat_as_number,                    /* tp_as_number */
+    pyrational_repr,                          /* tp_repr */
+    &pyrational_as_number,                    /* tp_as_number */
     0,                                        /* tp_as_sequence */
     0,                                        /* tp_as_mapping */
-    pytfloat_hash,                          /* tp_hash */
+    pyrational_hash,                          /* tp_hash */
     0,                                        /* tp_call */
-    pytfloat_str,                           /* tp_str */
+    pyrational_str,                           /* tp_str */
     0,                                        /* tp_getattro */
     0,                                        /* tp_setattro */
     0,                                        /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /* tp_flags */
-    "Floating number with tracking ",         /* tp_doc */
+    "Fixed precision rational numbers",       /* tp_doc */
     0,                                        /* tp_traverse */
     0,                                        /* tp_clear */
-    pytfloat_richcompare,                   /* tp_richcompare */
+    pyrational_richcompare,                   /* tp_richcompare */
     0,                                        /* tp_weaklistoffset */
     0,                                        /* tp_iter */
     0,                                        /* tp_iternext */
     0,                                        /* tp_methods */
     0,                                        /* tp_members */
-    pytfloat_getset,                        /* tp_getset */
+    pyrational_getset,                        /* tp_getset */
     0,                                        /* tp_base */
     0,                                        /* tp_dict */
     0,                                        /* tp_descr_get */
@@ -504,7 +482,7 @@ static PyTypeObject PyTFloat_Type = {
     0,                                        /* tp_dictoffset */
     0,                                        /* tp_init */
     0,                                        /* tp_alloc */
-    pytfloat_new,                           /* tp_new */
+    pyrational_new,                           /* tp_new */
     0,                                        /* tp_free */
     0,                                        /* tp_is_gc */
     0,                                        /* tp_bases */
@@ -516,125 +494,25 @@ static PyTypeObject PyTFloat_Type = {
     0,                                        /* tp_version_tag */
 };
 
-/* NumPy support */
-static PyObject*
-npytfloat_getitem(void* data, void* arr) {
-    tracked_float r;
-    memcpy(&r,data, sizeof(tracked_float)); // do we really need to copy? -> do we need to copy the array too?
-    return PyTFloat_FromTFloat(r);
-}
+PyArray_Descr npyrational_descr = {
+    PyObject_HEAD_INIT(0)
+    &PyRational_Type,       /* typeobj */
+    'V',                    /* kind */
+    'r',                    /* type */
+    '=',                    /* byteorder */
+    /*
+     * For now, we need NPY_NEEDS_PYAPI in order to make numpy detect our
+     * exceptions.  This isn't technically necessary,
+     * since we're careful about thread safety, and hopefully future
+     * versions of numpy will recognize that.
+     */
+    NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM, /* hasobject */
+    0,                      /* type_num */
+    sizeof(rational),       /* elsize */
+    offsetof(align_test,r), /* alignment */
+    0,                      /* subarray */
+    0,                      /* fields */
+    0,                      /* names */
+    &npyrational_arrfuncs,  /* f */
+};
 
-// do we change the whole item or the value -> whole item 
-// what do we do with lineage??? -> how will we ever set the function? i suppose with custom function, 
-// but that won't be vectorized
-static int
-npytfloat_setitem(PyObject* item, void* data, void* arr) {
-    tracked_float r;
-    if (PyTFloat_Check(item)) {
-        r = ((PyTFloat*)item)->f;
-    }
-    else {
-        double n = AS_DOUBLE(item);
-        int eq;
-        if (error_converting(n)) {
-            return -1;
-        }
-        r = make_tfloat_start(n, -1, -1, -1) ;
-    }
-    memcpy(data, &r, sizeof(tracked_float)); 
-    return 0;
-}
-
-static NPY_INLINE void
-byteswap(npy_int32* x) {
-    char* p = (char*)x;
-    size_t i;
-    for (i = 0; i < sizeof(*x)/2; i++) {
-        size_t j = sizeof(*x)-1-i;
-        char t = p[i];
-        p[i] = p[j];
-        p[j] = t;
-    }
-}
-
-static NPY_INLINE void
-byteswap_float(npy_float64* x) {
-    char* p = (char*)x;
-    size_t i;
-    for (i = 0; i < sizeof(*x)/2; i++) {
-        size_t j = sizeof(*x)-1-i;
-        char t = p[i];
-        p[i] = p[j];
-        p[j] = t;
-    }
-}
-
-static NPY_INLINE void
-byteswap_provenance(provenance* x) {
-    byteswap(&(x -> id));
-    byteswap(&(x -> start_0));
-    byteswap(&(x -> start_1));
-    byteswap(&(x -> end_0));
-    byteswap(&(x -> end_1));
-    byteswap(&(x -> type));
-}
-
-/* Note: do we have to copy over the pointer????  -> rn i say yes */
-
-static void
-npytfloat_copyswap(void* dst, void* src, int swap, void* arr) {
-    tracked_float* r;
-    if (!src) {
-        return;
-    }
-    r = (tfloat*)dst;
-    memcpy(r,src,sizeof(tfloat));
-    
-    if (r -> overflow != NULL) {
-        size_t t = sizeof((r -> overflow))/sizeof(provenance)
-        provenance of[t];
-        memcpy(of, &(r -> overflow), sizeof(provenance)*t);
-        r -> overflow = &of;
-    }
-    
-    if (swap) {
-        byteswap_float(&r->n);
-        byteswap_provenance(&r->p);
-        byteswap(&r->size);
-        if (r.overflow != NULL) {
-            provenance of[] = r -> overflow;
-            size_t t = sizeof(r -> overflow)/sizeof(provenance);
-            int i;
-            for(i = 0; i < t; i++) {
-                byteswap_provenance(&of[i]);
-            }
-        }
-    }
-}
-
-static void
-npytfloat_copyswapn(void* dst_, npy_intp dstride, void* src_,
-        npy_intp sstride, npy_intp n, int swap, void* arr) {
-    char *dst = (char*)dst_, *src = (char*)src_;
-    npy_intp i;
-    if (!src) {
-        return;
-    }
-    if (!swap && dstride == sizeof(tracked_float) && sstride == sizeof(tracked_float)) {
-        memcpy(dst, src, n*sizeof(tracked_float));
-        for (i = 0; i < n; i++) {
-            rational* r = (rational*)(dst+dstride*i);
-            if (r -> overflow != NULL) {
-                size_t t = sizeof((r -> overflow))/sizeof(provenance)
-                provenance of[t];
-                memcpy(of, &(s.overflow), sizeof(provenance)*(s.size - 1));
-                r -> overflow = &of;
-            }
-        }
-    }
-    else {
-        for (i = 0; i < n; i++) {
-            npyrational_copyswap(dst+dstride*i, src+sstride*i, swap, void* arr)
-        }
-    }
-}
