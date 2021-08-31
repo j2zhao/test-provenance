@@ -7,6 +7,7 @@
 #include <numpy/npy_3kcompat.h>
 #include <math.h>
 #include "common.h"
+#include "ndarraytypes.h"
 
 /* Uncomment the following line to work around a bug in numpy */
 /* #define ACQUIRE_GIL */
@@ -109,13 +110,13 @@ make_tfloat_prov1(npy_float64 n, tracked_float a) {
         provenance overflow[size - 1];
         provenance p;
         memcpy(overflow, a.overflow, p_size*(size - 1));
-        memcpy(p, a.p, p_size);
+        memcpy(&p, &a.p, p_size);
         r = {n, p, size, overflow};
         return r;
     }
     else {
         provenance p;
-        memcpy(p, a.p, p_size);
+        memcpy(&p, &a.p, p_size);
         r = {n, p, size, NULL};
         return r;
     }
@@ -135,7 +136,7 @@ make_tfloat_prov2(np_float64 n, tracked_float a, tracked_float b) {
         tracked_float r;
         /*a has history*/
         if (size0 > 0) {
-            memcpy(p, a.p, p_size);
+            memcpy(&p, &a.p, p_size);
             x = true;
             if (size0 > 1) {
                 memcpy(overflow, a.overflow, (size0 - 1)*p_sizes);
@@ -144,7 +145,7 @@ make_tfloat_prov2(np_float64 n, tracked_float a, tracked_float b) {
         }
         if (size1 > 0) {
             if (offset == -1) {
-                memcpy(p, b.p, p_size);
+                memcpy(&p, &b.p, p_size);
                 memcpy(overflow, b.overflow, (size1 - 1)*p_size);
             }
             else {
@@ -161,6 +162,32 @@ make_tfloat_prov2(np_float64 n, tracked_float a, tracked_float b) {
         return r;
     }
         
+}
+
+static NPY_INLINE int 
+append_prov(provenance* p, provenance* of, tracked_float* a) {
+    long s = a -> size;
+    if (s == 0) {
+        return s;
+    }
+    memcpy(p, &(a -> p), sizeof(provenance));
+    if (s > 1) {
+        memcpy(of, a -> overflow, sizeof(provenance)*(s - 1));
+    }
+    return s;
+}
+
+static NPY_INLINE int 
+append_prov_of(provenance* of, tracked_float a) {
+    long s = a.size;
+    if (s == 0) {
+        return s;
+    }
+    memcpy(of, &a.p, sizeof(provenance));
+    if (s > 1) {
+        memcpy(of + 1, a.overflow, sizeof(provenance)*(s - 1));
+    }
+    return s;
 }
 
 
@@ -638,3 +665,182 @@ npytfloat_copyswapn(void* dst_, npy_intp dstride, void* src_,
         }
     }
 }
+
+
+npytfloat_compare(const void* d0, const void* d1, void* arr) {
+    tfloat x = *(tfloat*)d0,
+             y = *(tfloat*)d1;
+    npy_float64 a = x.n, b = y.n;
+
+    return rational_lt(x,y)?-1:rational_eq(x,y)?0:1;
+}
+
+#define FIND_EXTREME(name, op) \
+    static int \
+    npyrational_##name(void* data_, npy_intp n, \
+            npy_intp* max_ind, void* arr) { \
+        const tfloat* data; \
+        npy_intp best_i; \
+        npy_float64 x, y; \
+        npy_intp i; \
+        if (!n) { \
+            return 0; \
+        } \
+        data = (rational*)data_; \
+        best_i = 0; \
+        y = data[0].n; \
+        for (i = 1; i < n; i++) { \
+            x = data[i].n; \
+            if (op) { \
+                best_i = i; \
+                y = data[i]; \
+            } \
+        } \
+        *max_ind = best_i; \
+        return 0; \
+    }
+
+FIND_EXTREME(argmin, x < y)
+FIND_EXTREME(argmax, x > y)
+
+
+
+
+// TODO: We can make an optimization here when compressing -> but how is yet unclear
+static void
+npyrational_dot(void* ip0_, npy_intp is0, void* ip1_, npy_intp is1,
+        void* op, npy_intp n, void* arr) {
+    npy_float64 r = 0;
+    tracked_float tf;
+    const char *ip0 = (char*)ip0_, *ip1 = (char*)ip1_;
+    npy_intp i;
+    long prov_size = 0;
+    //size of provenance
+    for (i = 0; i < n; i++) {
+        prov_size += ((tfloat*)ip0) -> size;
+        prov_size += ((tfloat*)ip1) -> size;
+        r += (((tfloat*)ip0) -> n) * (((tfloat*)ip1) -> n);
+        ip0 += is0;
+        ip1 += is1;
+    }
+
+    if (prov_size > 1) {
+        provenance of[prov_size - 1];
+        tf.overflow = &of;
+    }
+
+    tf.n = r;
+    tf.size = prov_size;
+    int j = 0; // temporary pointer in provenance
+    ip0 = (char*)ip0_;
+    ip1 = (char*)ip1_;
+    for (i = 0; i < n; i++) {
+        if (!j){
+            j += append_prov(&(tf.p), tf.overflow, (tfloat*)ip01);
+        } else {
+            j += append_prov(tf.overflow, (tfloat*)ip01);
+        }
+        if (!j){
+            j += append_prov(&(tf.p), tf.overflow, (tfloat*)ip11);
+        } else {
+            j += append_prov(tf.overflow, (tfloat*)ip11);
+        }
+        ip01 += is0;
+        ip11 += is1;
+    }
+
+    *(tracked_float*)op = tf;
+}
+
+static npy_bool
+npyrational_nonzero(void* data, void* arr) {
+    tracked_float r;
+    memcpy(&r,data,sizeof(r));
+    return (r.n == 0)?NPY_FALSE:NPY_TRUE;
+}
+
+static int
+npyrational_fill(void* data_, npy_intp length, void* arr) {
+    tracked_float* data = (tracked_float*)data_;
+    npy_float64 delta = (data[1].n) - (data[0].n);
+    tracked_float r;
+    npy_intp i;
+    
+    for (i = 2; i < length; i++) {
+        memcpy(&r, &data[i - 1], sizeof(tracked_float));
+        r.n += delta;
+        data[i] = r;
+    }
+    return 0;
+}
+
+static int
+npyrational_fillwithscalar(void* buffer_, npy_intp length,
+        void* value, void* arr) {
+    tracked_float r = *(tracked_float*)value;
+    tracked_float* buffer = (tracked_float*)buffer_;
+    npy_intp i;
+    for (i = 0; i < length; i++) {
+        buffer[i] = r;
+    }
+    return 0;
+}
+
+// only support two dimensions for now
+static int
+npyrational_reintialize(PyArrayObject* array, long id) {
+    npy_intp* shape = PyArray_SHAPE(array);
+    long i;
+    long j;
+    tracked_float *r;
+
+    for (i = 0; i < shape[0]; i ++) {
+        for (j = 0; j < shape[0]; j ++){
+            r = (tracked_float*) PyArray_GETPTR2(array, i, j);
+            r -> p = {id, i, j, 0, 0, 0};
+            r -> size = 1;
+            r -> overflow = NULL;
+        } 
+    }
+    return 0;
+}
+
+static PyArray_ArrFuncs npytfloat_arrfuncs;
+
+typedef struct { char c; tracked_float r; } align_test;
+
+PyArray_Descr npyrational_descr = {
+    PyObject_HEAD_INIT(0)
+    &PyTFloat_Type,       /* typeobj */
+    'f',                    /* kind */
+    'r',                    /* type */
+    '=',                    /* byteorder */
+    /*
+     * For now, we need NPY_NEEDS_PYAPI in order to make numpy detect our
+     * exceptions.  This isn't technically necessary,
+     * since we're careful about thread safety, and hopefully future
+     * versions of numpy will recognize that.
+     */
+    NPY_ITEM_IS_POINTER | NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM , /* hasobject */
+    0,                      /* type_num */
+    sizeof(tracked_float),       /* elsize */
+    offsetof(align_test, r), /* alignment */
+    0,                      /* subarray */
+    0,                      /* fields */
+    0,                      /* names */
+    &npytfloat_arrfuncs,  /* f */
+};
+
+#define DEFINE_CAST(From,To,statement) \
+    static void \
+    npycast_##From##_##To(void* from_, void* to_, npy_intp n, \
+                          void* fromarr, void* toarr) { \
+        const From* from = (From*)from_; \
+        To* to = (To*)to_; \
+        npy_intp i; \
+        for (i = 0; i < n; i++) { \
+            From x = from[i]; \
+            statement \
+            to[i] = y; \
+        } \
+    }

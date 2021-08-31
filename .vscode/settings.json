@@ -37,6 +37,7 @@
         "__mutex_base": "c",
         "ios": "c",
         "istream": "c",
-        "ostream": "c"
+        "ostream": "c",
+        "__string": "c"
     }
 }

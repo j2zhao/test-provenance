@@ -25,7 +25,7 @@
 RATIONAL_BINOP(add, +)
 
 int main(void){
-    int a[0];
+    int a = 100*10;
     // int e[3] = {4, 4, 4};
     // memcpy(a, e, 3*sizeof(int));
     
@@ -33,7 +33,7 @@ int main(void){
     //     printf("%d ", a[i]);
     // }
     // printf("\n");
-    
+    int w[a];
 
     int i = 1;
     int j = 2;
