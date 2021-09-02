@@ -38,6 +38,8 @@
         "ios": "c",
         "istream": "c",
         "ostream": "c",
-        "__string": "c"
+        "__string": "c",
+        "__functional_base_03": "c",
+        "__tuple": "c"
     }
 }

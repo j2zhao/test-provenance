@@ -12,20 +12,20 @@
 /* Uncomment the following line to work around a bug in numpy */
 /* #define ACQUIRE_GIL */
 
-// static void
-// set_overflow(void) {
-// #ifdef ACQUIRE_GIL
-//     /* Need to grab the GIL to dodge a bug in numpy */
-//     PyGILState_STATE state = PyGILState_Ensure();
-// #endif
-//     if (!PyErr_Occurred()) {
-//         PyErr_SetString(PyExc_OverflowError,
-//                 "overflow in rational arithmetic");
-//     }
-// #ifdef ACQUIRE_GIL
-//     PyGILState_Release(state);
-// #endif
-// }
+static void
+set_overflow(void) {
+#ifdef ACQUIRE_GIL
+    /* Need to grab the GIL to dodge a bug in numpy */
+    PyGILState_STATE state = PyGILState_Ensure();
+#endif
+    if (!PyErr_Occurred()) {
+        PyErr_SetString(PyExc_OverflowError,
+                "overflow in (tracked) float arithmetic");
+    }
+#ifdef ACQUIRE_GIL
+    PyGILState_Release(state);
+#endif
+}
 
 // static void
 // set_zero_divide(void) {
@@ -35,7 +35,7 @@
 // #endif
 //     if (!PyErr_Occurred()) {
 //         PyErr_SetString(PyExc_ZeroDivisionError,
-//                 "zero divide in rational arithmetic");
+//                 "zero divide in (tracked) float arithmetic");
 //     }
 // #ifdef ACQUIRE_GIL
 //     PyGILState_Release(state);
@@ -45,15 +45,15 @@
 
 
 typedef struct {
-    long id;
+    double id;
     /*interval for indices */
     /* starts at + 1 */
-    long start_0;
-    long start_1;
-    long end_0;
-    long end_1;
+    double start_0;
+    double start_1;
+    double end_0;
+    double end_1;
     /* type */
-    long type;
+    double type;
     /*overflow data*/
 } provenance;
 
@@ -62,7 +62,7 @@ typedef struct {
     /* numerator */
     npy_float64 n;
     provenance p;
-    long size;
+    double size;
     provenance* overflow;
     } tracked_float;
 
@@ -71,29 +71,33 @@ tfloat_nonzero(tracked_float x) {
     return x.n!=0;
 }
 
+static NPY_INLINE int
+tfloat_sign(tracked_float x) {
+    return x.n<0?-1:x.n==0?0:1;
+}
 
 static NPY_INLINE provenance
-make provenance(long id, long start_0, long start_1, long end_0, long end_1, long type) {
+make provenance(double id, double start_0, double start_1, double end_0, double end_1, double type) {
     provenance prov = {id, start_0, start_1, end_0, end_1, type};
     return prov
 }
 
 static NPY_INLINE tracked_float
-make_tfloat_full(npy_float64 n, long id, long start_0, long start_1, long end_0, long end_1, long type, long size, provenance *overflow) {
+make_tfloat_full(npy_float64 n, double id, double start_0, double start_1, double end_0, double end_1, double type, double size, provenance *overflow) {
     provenance prov = {id, start_0, start_1, end_0, end_1, type};
     tracked_float r = {n, prov, size, overflow};
     return r;
 }
 
 static NPY_INLINE tracked_float
-make_tfloat_start(npy_float64 n, long id, long start_0, long start_1) {
+make_tfloat_start(npy_float64 n, double id, double start_0, double start_1) {
     provenance prov = {id, start_0, start_1, -1, -1, 0};
     tracked_float r = {n, prov, 1,  NULL};
     return r;
 }
 
 static NPY_INLINE tracked_float
-make_prov_start(long id, long start_0, long start_1) {
+make_prov_start(double id, double start_0, double start_1) {
     provenance prov = {id, start_0, start_1, 0, 0, 0};
     return prov;
 }
@@ -103,7 +107,7 @@ make_prov_start(long id, long start_0, long start_1) {
 /* overflows don't change between programs */
 static NPY_INLINE tracked_float
 make_tfloat_prov1(npy_float64 n, tracked_float a) {
-    long size = a.size;
+    double size = a.size;
     size_t p_size = size(provenance);
     tracked_float r;
     if (size - 1) > 0 {
@@ -124,9 +128,9 @@ make_tfloat_prov1(npy_float64 n, tracked_float a) {
 
 static NPY_INLINE tracked_float
 make_tfloat_prov2(np_float64 n, tracked_float a, tracked_float b) {
-    long size0 = a.size
-    long size1 = b.size
-    long size = size0 + size1
+    double size0 = a.size
+    double size1 = b.size
+    double size = size0 + size1
     /* we have history */
     if (size >= 1) {
         provenance p;
@@ -166,7 +170,7 @@ make_tfloat_prov2(np_float64 n, tracked_float a, tracked_float b) {
 
 static NPY_INLINE int 
 append_prov(provenance* p, provenance* of, tracked_float* a) {
-    long s = a -> size;
+    double s = a -> size;
     if (s == 0) {
         return s;
     }
@@ -179,7 +183,7 @@ append_prov(provenance* p, provenance* of, tracked_float* a) {
 
 static NPY_INLINE int 
 append_prov_of(provenance* of, tracked_float a) {
-    long s = a.size;
+    double s = a.size;
     if (s == 0) {
         return s;
     }
@@ -242,10 +246,10 @@ PyTFloat_FromTFloat(tracked_float x) {
 static PyObject*
 pytfloat_new(PyTypeObject* type, PyObject* args, PyObject* kwds) {
     npy_float64 n = PyTuple_GET_ITEM(args, 0);
-    long id = PyTuple_GET_ITEM(args, 1);
-    long start_0 = PyTuple_GET_ITEM(args, 2);
-    long start_1 = PyTuple_GET_ITEM(args, 3)
-    tracked_float r = make_tfloat_start(n, int id, int start_0, int start_1);
+    double id = PyTuple_GET_ITEM(args, 1);
+    double start_0 = PyTuple_GET_ITEM(args, 2);
+    double start_1 = PyTuple_GET_ITEM(args, 3)
+    tracked_float r = make_tfloat_start(n, double id, double start_0, double start_1);
     return PyTFloat_FromTFFloat(r);
 }
 
@@ -287,15 +291,16 @@ provenance_repr(provenance p, provenance* overflow) {
     provenance q = p;
     int x;
     for (x = 0, x < rsize, x ++) {
-        offset += sprint(output + offset, "[(%d,%d,%d,%d,%d,%d)]", 
+        offset += sprintf(output + offset, "[(%d,%d,%d,%d,%d,%d)]", 
             q.id, q.start_0, q.start_1, q.start_2,x.end_0, q.end_1, q.type);
         if (x > 0 && x < rsize -1 ) {
-            offset += sprint(output + offset, " , ");
+            offset += sprintf(output + offset, " , ");
         }
-        if (rsize != 1) {
+        if (rsize != 1 || x = rsize - 1) {
             q = overflow[x];
         }
     }
+    char* output[rsize*50];
 
     return output;
     
@@ -305,7 +310,7 @@ static PyObject*
 pytfloat_repr(PyObject* self) {
     tracked_float x = ((PyTFloat*)self)->f;
     const char* c = provenance_repr(x.p, x.overflow);
-    return PyUnicode_FromFormat("%d ; %V", x.n, c);
+    return PyUnicode_FromFormat("%d , %V", x.n, c);
 }
 
 static PyObject*
@@ -459,7 +464,7 @@ pytfloat_float_set(PyObject* self, PyObject* value, void* closure) {
 static PyObject*
 pytfloat_provenance_get(PyObject* self, void* closure) {
     tracked_float f = ((PyTFloat*)self)->f;
-    long size = f.size;
+    double size = f.size;
     int i;
     provenance p = f.p;
 
@@ -650,7 +655,7 @@ npytfloat_copyswapn(void* dst_, npy_intp dstride, void* src_,
     if (!swap && dstride == sizeof(tracked_float) && sstride == sizeof(tracked_float)) {
         memcpy(dst, src, n*sizeof(tracked_float));
         for (i = 0; i < n; i++) {
-            rational* r = (rational*)(dst+dstride*i);
+            tracked_float* r = (tracked_float*)(dst+dstride*i);
             if (r -> overflow != NULL) {
                 size_t t = sizeof((r -> overflow))/sizeof(provenance)
                 provenance of[t];
@@ -661,7 +666,7 @@ npytfloat_copyswapn(void* dst_, npy_intp dstride, void* src_,
     }
     else {
         for (i = 0; i < n; i++) {
-            npyrational_copyswap(dst+dstride*i, src+sstride*i, swap, void* arr)
+            npy_tfloat_copyswap(dst+dstride*i, src+sstride*i, swap, void* arr)
         }
     }
 }
@@ -672,12 +677,12 @@ npytfloat_compare(const void* d0, const void* d1, void* arr) {
              y = *(tfloat*)d1;
     npy_float64 a = x.n, b = y.n;
 
-    return rational_lt(x,y)?-1:rational_eq(x,y)?0:1;
+    return (a < b)?-1:(a=b)?0:1;
 }
 
 #define FIND_EXTREME(name, op) \
     static int \
-    npyrational_##name(void* data_, npy_intp n, \
+    npytfloat_##name(void* data_, npy_intp n, \
             npy_intp* max_ind, void* arr) { \
         const tfloat* data; \
         npy_intp best_i; \
@@ -686,7 +691,7 @@ npytfloat_compare(const void* d0, const void* d1, void* arr) {
         if (!n) { \
             return 0; \
         } \
-        data = (rational*)data_; \
+        data = (tfloat*)data_; \
         best_i = 0; \
         y = data[0].n; \
         for (i = 1; i < n; i++) { \
@@ -708,13 +713,13 @@ FIND_EXTREME(argmax, x > y)
 
 // TODO: We can make an optimization here when compressing -> but how is yet unclear
 static void
-npyrational_dot(void* ip0_, npy_intp is0, void* ip1_, npy_intp is1,
+npytfloat_dot(void* ip0_, npy_intp is0, void* ip1_, npy_intp is1,
         void* op, npy_intp n, void* arr) {
     npy_float64 r = 0;
     tracked_float tf;
     const char *ip0 = (char*)ip0_, *ip1 = (char*)ip1_;
     npy_intp i;
-    long prov_size = 0;
+    double prov_size = 0;
     //size of provenance
     for (i = 0; i < n; i++) {
         prov_size += ((tfloat*)ip0) -> size;
@@ -753,14 +758,14 @@ npyrational_dot(void* ip0_, npy_intp is0, void* ip1_, npy_intp is1,
 }
 
 static npy_bool
-npyrational_nonzero(void* data, void* arr) {
+npytfloat_nonzero(void* data, void* arr) {
     tracked_float r;
     memcpy(&r,data,sizeof(r));
     return (r.n == 0)?NPY_FALSE:NPY_TRUE;
 }
 
 static int
-npyrational_fill(void* data_, npy_intp length, void* arr) {
+npytfloat_fill(void* data_, npy_intp length, void* arr) {
     tracked_float* data = (tracked_float*)data_;
     npy_float64 delta = (data[1].n) - (data[0].n);
     tracked_float r;
@@ -775,7 +780,7 @@ npyrational_fill(void* data_, npy_intp length, void* arr) {
 }
 
 static int
-npyrational_fillwithscalar(void* buffer_, npy_intp length,
+npytfloat_fillwithscalar(void* buffer_, npy_intp length,
         void* value, void* arr) {
     tracked_float r = *(tracked_float*)value;
     tracked_float* buffer = (tracked_float*)buffer_;
@@ -788,16 +793,17 @@ npyrational_fillwithscalar(void* buffer_, npy_intp length,
 
 // only support two dimensions for now
 static int
-npyrational_reintialize(PyArrayObject* array, long id) {
+npytfloat_intialize(PyArrayObject* array, PyLongObject id) {
     npy_intp* shape = PyArray_SHAPE(array);
-    long i;
-    long j;
+    double id2 = PyLong_AsLong(id)
+    double i;
+    double j;
     tracked_float *r;
 
     for (i = 0; i < shape[0]; i ++) {
-        for (j = 0; j < shape[0]; j ++){
+        for (j = 0; j < shape[1]; j ++){
             r = (tracked_float*) PyArray_GETPTR2(array, i, j);
-            r -> p = {id, i, j, 0, 0, 0};
+            r -> p = {id2, i, j, 0, 0, 0};
             r -> size = 1;
             r -> overflow = NULL;
         } 
@@ -809,7 +815,7 @@ static PyArray_ArrFuncs npytfloat_arrfuncs;
 
 typedef struct { char c; tracked_float r; } align_test;
 
-PyArray_Descr npyrational_descr = {
+PyArray_Descr npytfloat_descr = {
     PyObject_HEAD_INIT(0)
     &PyTFloat_Type,       /* typeobj */
     'f',                    /* kind */
@@ -844,3 +850,171 @@ PyArray_Descr npyrational_descr = {
             to[i] = y; \
         } \
     }
+
+//TODO: none of the casting/initialization functions initialize provenance
+//We have to have that as a separate step
+#define DEFINE_CAST2(type) \
+    DEFINE_CAST(type,tracked_float,tracked_float y = make_prov_start((npy_float64) x, -1, -1, -1);) \
+    DEFINE_CAST(tracked_float, type ,npy_float64 z = x.n; \
+                type y = z; if (y != z) set_overflow();)
+
+
+DEFINE_CAST2(npy_int8)
+DEFINE_CAST2(npy_int16)
+DEFINE_CAST2(npy_int32)
+DEFINE_CAST2(npy_int64)
+DEFINE_CAST2(npy_bool)
+DEFINE_CAST2(npy_float16)
+DEFINE_CAST2(npy_float32)
+DEFINE_CAST2(npy_float64)
+DEFINE_CAST2(npy_uint8)
+DEFINE_CAST2(npy_uint16)
+DEFINE_CAST2(npy_uint32)
+DEFINE_CAST2(npy_uint64)
+
+#define BINARY_UFUNC(name,outtype,exp) \
+    void tfloat_ufunc_##name(char** args, npy_intp const *dimensions, \
+              npy_intp const *steps, void* data) { \
+        npy_intp is0 = steps[0], is1 = steps[1], \
+            os = steps[2], n = *dimensions; \
+        char *i0 = args[0], *i1 = args[1], *o = args[2]; \
+        int k; \
+        npy_float64 a, b; \
+        for (k = 0; k < n; k++) { \
+            tracked_float x = *(tracked_float*)i0; \
+            tracked_float y = *(tracked_float*)i1; \
+            a = x.n; \
+            b = y.n; \
+            if (outtype != tracked_float) { \
+                 *(outtype*)o = exp; \
+            } else {\
+                npy_float64 n = (npy_float64) exp;\
+                *(outtype*)o = make_tfloat_prov2(n, x, y)\
+            }\
+            i0 += is0; i1 += is1; o += os; \
+        } \
+    }
+
+//figure out how to create equivalent of gcd and etc. -> custom functions for this
+TFLOAT_BINARY_UFUNC(add,tracked_float,a + b)
+TFLOAT_BINARY_UFUNC(greater_equal, npy_bool, a >= b))_BINARY_UFUNC(subtract,tracked_float,a - b)
+TFLOAT_BINARY_UFUNC(multiply,tracked_float, a*b)
+TFLOAT_BINARY_UFUNC(divide,tracked_float,a/b)
+TFLOAT_BINARY_UFUNC(floor_divide,tracked_float,(int) floor(a/ b))
+PyUFuncGenericFunction tfloat_ufunc_true_divide = tfloat_ufunc_divide;
+TFLOAT_BINARY_UFUNC(minimum,tracked_float, a<b?a:b)
+TFLOAT_BINARY_UFUNC(maximum,tracked_float, a< b?b:a)
+TFLOAT_BINARY_UFUNC(equal,npy_bool,a = b)
+TFLOAT_BINARY_UFUNC(not_equal,npy_bool, a!= b)
+TFLOAT_BINARY_UFUNC(less,npy_bool, a < b)
+TFLOAT_BINARY_UFUNC(greater,npy_bool,a > b))
+TFLOAT_BINARY_UFUNC(less_equal, npy_bool, a <= b))
+TFLOAT_BINARY_UFUNC(greater_equal, npy_bool, a >= b))
+TFLOAT_BINARY_UFUNC(greater_equal, npy_bool, a >= b))
+
+#define UNARY_UFUNC(name,outtype,exp) \
+    void tfloat_ufunc_##name(char** args, npy_intp const *dimensions, \
+                               npy_intp const *steps, void* data) { \
+        npy_intp is = steps[0], os = steps[1], n = *dimensions; \
+        char *i = args[0], *o = args[1]; \
+        int k; \
+        for (k = 0; k < n; k++) { \
+            tracked_float x = *(tracked_float*)i; \
+            npy_float64 a = x.n;\
+            if (outtype != tracked_float) { \
+                 *(outtype*)o = exp; \
+            } else {\
+                npy_float64 n = (npy_float64) exp;\
+                *(outtype*)o = make_tfloat_prov2(n, x, y)\
+            }\
+            i += is; o += os; \
+        } \
+    }
+
+UNARY_UFUNC(negative,tracked_float, - a)
+UNARY_UFUNC(absolute,tracked_float,fabs(a))
+UNARY_UFUNC(floor,tracked_float, floor(a))
+UNARY_UFUNC(ceil,tracked_float, ceil(a))
+UNARY_UFUNC(trunc,tracked_float,trunc(c))
+UNARY_UFUNC(square,tracked_float, a*a)
+UNARY_UFUNC(rint,tracked_float,rint(a)))
+UNARY_UFUNC(sign,tracked_float,tfloat_sign(a))
+
+/*UNARY_UFUNC(reciprocal,tracked_float,inverse(x)) -> TODO: add more functions as needed*/
+//get provenance as string -> am not sure that this will work
+UNARY_UFUNC(provenance_str,char*,provenance_repr(x.p, x.overflow))
+
+static NPY_INLINE void
+tfloat_matrix_multiply(char **args, npy_intp const *dimensions, npy_intp const *steps)
+{
+    /* pointers to data for input and output arrays */
+    char *ip1 = args[0];
+    char *ip2 = args[1];
+    char *op = args[2];
+
+    /* lengths of core dimensions */
+    npy_intp dm = dimensions[0];
+    npy_intp dn = dimensions[1];
+    npy_intp dp = dimensions[2];
+
+    /* striding over core dimensions */
+    npy_intp is1_m = steps[0];
+    npy_intp is1_n = steps[1];
+    npy_intp is2_n = steps[2];
+    npy_intp is2_p = steps[3];
+    npy_intp os_m = steps[4];
+    npy_intp os_p = steps[5];
+
+    /* core dimensions counters */
+    npy_intp m, p;
+
+    /* calculate dot product for each row/column vector pair */
+    for (m = 0; m < dm; m++) {
+        for (p = 0; p < dp; p++) {
+            npytfloat_dot(ip1, is1_n, ip2, is2_n, op, dn, NULL);
+
+            /* advance to next column of 2nd input array and output array */
+            ip2 += is2_p;
+            op  +=  os_p;
+        }
+
+        /* reset to first column of 2nd input array and output array */
+        ip2 -= is2_p * p;
+        op -= os_p * p;
+
+        /* advance to next row of 1st input array and output array */
+        ip1 += is1_m;
+        op += os_m;
+    }
+}
+
+static void
+rational_gufunc_matrix_multiply(char **args, npy_intp const *dimensions,
+                                npy_intp const *steps, void *NPY_UNUSED(func))
+{
+    /* outer dimensions counter */
+    npy_intp N_;
+
+    /* length of flattened outer dimensions */
+    npy_intp dN = dimensions[0];
+
+    /* striding over flattened outer dimensions for input and output arrays */
+    npy_intp s0 = steps[0];
+    npy_intp s1 = steps[1];
+    npy_intp s2 = steps[2];
+
+    /*
+     * loop through outer dimensions, performing matrix multiply on
+     * core dimensions for each loop
+     */
+    for (N_ = 0; N_ < dN; N_++, args[0] += s0, args[1] += s1, args[2] += s2) {
+        rational_matrix_multiply(args, dimensions+1, steps+3);
+    }
+}
+
+//test_add -> do i need this? -> how to test
+
+PyMethodDef module_methods[] = {
+    {}
+    {0} /* sentinel */
+};
