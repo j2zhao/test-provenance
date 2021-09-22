@@ -2,12 +2,13 @@
 aux_functions.py contains auxillary functions for tracking spatial provenance
 
 """
+
 import numpy as np
 import time
 import os
 import uuid
 import random
-#from numpy.core.numeric import allclose
+# from numpy.core.numeric import allclose
 
 def reset_array_prov(array, id = None):
     if id == None:
