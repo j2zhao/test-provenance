@@ -1,0 +1,3 @@
+ARB = '***'
+UNKNOWN = '****'
+ARRAY = 'XXXX'

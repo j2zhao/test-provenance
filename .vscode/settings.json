@@ -40,6 +40,7 @@
         "ostream": "c",
         "__string": "c",
         "__functional_base_03": "c",
-        "__tuple": "c"
+        "__tuple": "c",
+        "*.tcc": "c"
     }
 }
