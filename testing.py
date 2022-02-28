@@ -17,7 +17,7 @@ def set_array(array):
             array[i,j] = TrackedObj(random.random(), (id, (i,j)))
     return array
 
-def meta_test_prov(funct, inputs = [(10000, 1)], storage = './logs'):
+def meta_test_prov(funct, inputs = [(100, 1)], storage = './logs'):
     """
     inputs -> size of arrays?
     """
@@ -79,5 +79,5 @@ def meta_test(funct, inputs = [(100, 100)]):
 
 
 if __name__ == '__main__':
-    meta_test_prov(test4)
+    meta_test_prov(test1, inputs = [(100, 1)])
     #meta_test(test3)

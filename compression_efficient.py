@@ -234,18 +234,6 @@ def compression(prov_arr, relative = True):
     end = time.time()
     print('cell level compression: {}'.format(end - start))
     # convert to relative -> only do this by dimension and id, not by interval
-    
-    # attempt to 
-    # if relative:
-    #     start = time.time()
-    #     for row in range(prov_arr.shape[0]):
-    #         for col in range(prov_arr.shape[1]):
-    #             for id in cell_prov[row, col]:
-    #                 cell_prov[row, col][id] = convert_to_relative(cell_prov[row, col][id], row, col)
-        
-    #     #  print(start)
-    #     end = time.time()
-    #     print('conversion to relational: {}'.format(end - start))
 
     start = time.time()
     output = {}
